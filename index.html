@@ -9,6 +9,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --azul:#1F4E79; --azul-osc:#12314D; --tinta:#17242E; --tinta-2:#4A5B68; --tinta-3:#8395A3;
@@ -33,6 +35,18 @@ button{font:inherit;color:inherit}
 .conmutador{display:inline-flex;border:1px solid rgba(255,255,255,.45);border-radius:6px;overflow:hidden}
 .conmutador button{background:transparent;border:0;color:#fff;padding:6px 12px;cursor:pointer}
 .conmutador button[aria-pressed="true"]{background:#fff;color:var(--azul);font-weight:600}
+.btn-pdf{align-self:flex-end;background:#fff;color:var(--azul);border:1px solid #fff;border-radius:6px;padding:7px 14px;font-weight:600;cursor:pointer}
+.btn-pdf:hover{background:#E4EEF3}
+.btn-pdf[disabled]{opacity:.7;cursor:progress}
+@media print{
+  body{background:#fff}
+  .controles,.leaflet-control-zoom,.leaflet-control-layers{display:none!important}
+  .cabecera{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  main{padding:10px 0}
+  .zona-mapa{grid-template-columns:1fr}
+  .tabla-wrap{max-height:none;overflow:visible}
+  .panel,.kpi{break-inside:avoid}
+}
 select{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.45);background:#fff;color:var(--tinta);min-width:200px}
 
 main{max-width:1480px;margin:0 auto;padding:18px 28px 36px;display:grid;gap:18px}
@@ -119,6 +133,7 @@ td.pos{color:var(--tinta-3);width:36px}
       <label for="selDepto">Departamento
         <select id="selDepto"><option value="">Todos los departamentos</option></select>
       </label>
+      <button type="button" class="btn-pdf" id="btnPdf" aria-live="polite">Descargar PDF</button>
     </div>
   </div>
 </header>
@@ -217,18 +232,8 @@ const DATA={"rows":[{"id":"27006","m":"Acandí","d":"Chocó","am":79852.8,"ai":2
 
   /* ---------- mapa ---------- */
   const mapa = L.map('mapa',{zoomSnap:.5, preferCanvas:false});
-  const bases = {
-    'CARTO claro (sin etiquetas)': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap, &copy; CARTO',subdomains:'abcd',maxZoom:18}),
-    'CARTO claro': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap, &copy; CARTO',subdomains:'abcd',maxZoom:18}),
-    'CARTO oscuro': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap, &copy; CARTO',subdomains:'abcd',maxZoom:18}),
-    'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors',maxZoom:19}),
-    'OpenTopoMap': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap, SRTM | &copy; OpenTopoMap (CC-BY-SA)',maxZoom:17}),
-    'Esri imagen satelital': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri — Maxar, Earthstar Geographics, GIS User Community',maxZoom:19}),
-    'Esri topográfico': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri',maxZoom:19}),
-    'Esri relieve sombreado': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri',maxZoom:13})
-  };
-  bases['CARTO claro (sin etiquetas)'].addTo(mapa);
-  const capaDep = L.geoJSON(DATA.dep,{style:{color:'#5B6E7C',weight:1.2,fill:false,dashArray:'3 3'},interactive:false}).addTo(mapa);
+  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Tiles &copy; Esri — Maxar, Earthstar Geographics, GIS User Community',maxZoom:19,crossOrigin:'anonymous'}).addTo(mapa);
+  const capaDep = L.geoJSON(DATA.dep,{style:{color:'#FFFFFF',weight:1.4,fill:false,dashArray:'4 3'},interactive:false}).addTo(mapa);
   const capaMun = L.geoJSON(DATA.mun,{
     style: f => estilo(f.properties.id),
     onEachFeature:(f,l)=>{
@@ -239,10 +244,8 @@ const DATA={"rows":[{"id":"27006","m":"Acandí","d":"Chocó","am":79852.8,"ai":2
       l.on('mouseout',()=>{ if(seleccion!==r.id) l.setStyle(estilo(r.id)); });
     }
   }).addTo(mapa);
-  const etiquetas = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:18,pane:'shadowPane'}).addTo(mapa);
-  const sobrepuestas = { 'Nombres de lugares': etiquetas, 'Municipios afectados': capaMun, 'Límites departamentales': capaDep };
-  L.control.layers(bases, sobrepuestas, {collapsed:true, position:'topright'}).addTo(mapa);
-  mapa.on('baselayerchange', e => { const oscuro = /oscuro|satelital/i.test(e.name); capaDep.setStyle({color: oscuro ? '#FFFFFF' : '#5B6E7C'}); });
+  const etiquetas = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,pane:'shadowPane',crossOrigin:'anonymous'}).addTo(mapa);
+  L.control.layers(null, { 'Nombres de lugares': etiquetas, 'Municipios afectados': capaMun, 'Límites departamentales': capaDep }, {collapsed:true, position:'topright'}).addTo(mapa);
   mapa.fitBounds(capaMun.getBounds(),{padding:[10,10]});
   const limitesIniciales = mapa.getBounds();
 
@@ -382,6 +385,45 @@ const DATA={"rows":[{"id":"27006","m":"Acandí","d":"Chocó","am":79852.8,"ai":2
     refrescar();
   });
   refrescar();
+
+  /* ---------- exportación a PDF ---------- */
+  const btnPdf = document.getElementById('btnPdf');
+  btnPdf.addEventListener('click', async () => {
+    if (!window.html2canvas || !window.jspdf){ window.print(); return; }
+    btnPdf.disabled = true; const txt = btnPdf.textContent; btnPdf.textContent = 'Generando PDF…';
+    const ocultar = document.querySelectorAll('.leaflet-control-zoom,.leaflet-control-layers,.controles');
+    ocultar.forEach(e=>e.style.visibility='hidden');
+    try {
+      const ancho = document.documentElement.scrollWidth;
+      const lienzo = await html2canvas(document.body,{scale:2,useCORS:true,allowTaint:false,backgroundColor:'#F3F6F8',windowWidth:ancho,scrollX:0,scrollY:-window.scrollY,
+        ignoreElements: el => el.classList && (el.classList.contains('leaflet-control-zoom')||el.classList.contains('leaflet-control-layers')||el.classList.contains('controles'))});
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(), m = 8;
+      const anchoImg = pw - 2*m, escala = anchoImg / lienzo.width;
+      const altoPag = (ph - 2*m) / escala;   // alto de página en píxeles del lienzo
+      let y = 0, pag = 0;
+      while (y < lienzo.height){
+        const h = Math.min(altoPag, lienzo.height - y);
+        const c = document.createElement('canvas'); c.width = lienzo.width; c.height = h;
+        c.getContext('2d').drawImage(lienzo, 0, y, lienzo.width, h, 0, 0, lienzo.width, h);
+        if (pag>0) pdf.addPage();
+        pdf.addImage(c.toDataURL('image/jpeg',0.92),'JPEG', m, m, anchoImg, h*escala);
+        pdf.setFontSize(8); pdf.setTextColor(120);
+        pdf.text(`Áreas inundadas por municipio — frente frío, febrero de 2026 · ${metrica==='ai'?'hectáreas inundadas':'% del área municipal'}${depto?' · '+depto:''} · página ${pag+1}`, m, ph-3);
+        y += h; pag++;
+      }
+      const f = new Date().toISOString().slice(0,10);
+      pdf.save(`Dashboard_Inundaciones_Frente_Frio_${depto?depto.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_')+'_':''}${f}.pdf`);
+    } catch (err){
+      console.error(err);
+      alert('No fue posible generar el PDF de forma automática; se abrirá el cuadro de impresión del navegador, donde puede elegir "Guardar como PDF".');
+      window.print();
+    } finally {
+      ocultar.forEach(e=>e.style.visibility='');
+      btnPdf.disabled = false; btnPdf.textContent = txt;
+    }
+  });
 })();
 </script>
 </body>
